@@ -382,12 +382,12 @@ This project is licensed under the ISC License.
 
 ## 🙏 Acknowledgments
 
-- [A2A Protocol](https://google-a2a.github.io/A2A) - Agent-to-Agent communication standard
+- [A2A Protocol](https://a2a-protocol.org/latest/) - Agent-to-Agent communication standard
 - [@a2a-js/sdk](https://github.com/a2aproject/a2a-js) - JavaScript SDK for A2A Protocol
 
 ## 📚 Resources
 
-- [A2A Protocol Documentation](https://google-a2a.github.io/A2A)
+- [A2A Protocol Documentation](https://a2a-protocol.org/latest/)
 - [A2A JavaScript SDK](https://github.com/a2aproject/a2a-js)
 - [Example Weather Agent](https://github.com/Faishalbhitex/ts-a2a-mcp)
 
