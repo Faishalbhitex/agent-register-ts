@@ -1,0 +1,52 @@
+import { Request, Response, NextFunction } from "express";
+import { authService } from "../services/auth.service.js";
+import { ResponseUtil } from "../utils/response.js";
+import { BadRequestError } from "../utils/errors.js";
+
+export class AuthController {
+  async register(req: Request, res: Response, next: NextFunction): Promise<void> {
+    try {
+      const { username, email, password_hash } = req.body;
+
+      if (!username || !email || !password_hash) {
+        throw new BadRequestError('Username, email and password are required');
+      }
+
+      const result = await authService.register({ username, email, password_hash });
+
+      ResponseUtil.created(res, result, 'User registered successfully');
+    } catch (err) {
+      next(err);
+    }
+  }
+
+  async login(req: Request, res: Response, next: NextFunction): Promise<void> {
+    try {
+      const { email, password } = req.body;
+
+      if (!email || !password) {
+        throw new BadRequestError('Email and password are required');
+      }
+
+      const result = await authService.login({ email, password });
+
+      ResponseUtil.success(res, result, 'Login successfully');
+    } catch (err) {
+      next(err);
+    }
+  }
+
+  async me(req: Request, res: Response, next: NextFunction): Promise<void> {
+    try {
+      if (!req.user) {
+        throw new BadRequestError('User not authenticated');
+      }
+
+      ResponseUtil.success(res, req.user, 'User info retrived');
+    } catch (err) {
+      next(err);
+    }
+  }
+}
+
+export const authController = new AuthController();
