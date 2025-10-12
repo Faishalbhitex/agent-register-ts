@@ -1,6 +1,6 @@
 # Agent Card Registry API
 
-A production-ready RESTful API for managing AI agent registrations using the [A2A (Agent-to-Agent) Protocol](https://google-a2a.github.io/A2A). Built with TypeScript, Express, and PostgreSQL.
+A production-ready RESTful API for managing AI agent registrations using the [A2A (Agent-to-Agent) Protocol](https://github.com/a2aproject/A2A). Built with TypeScript, Express, and PostgreSQL.
 
 ## 🌟 Features
 
