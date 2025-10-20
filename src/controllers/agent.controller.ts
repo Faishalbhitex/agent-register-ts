@@ -21,9 +21,10 @@ export class AgentController {
     }
   }
 
-  async getAll(_req: Request, res: Response, next: NextFunction): Promise<void> {
+  async getAll(req: Request, res: Response, next: NextFunction): Promise<void> {
     try {
-      const agents = await agentService.findAll();
+      const isAdmin = req.user?.role === 'admin';
+      const agents = await agentService.findAll(req.user?.id, isAdmin);
 
       ResponseUtil.success(res, agents, 'Agents retrieved successfully');
     } catch (err) {

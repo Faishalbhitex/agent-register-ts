@@ -12,9 +12,9 @@ export class AuthController {
         throw new BadRequestError('Username, email and password are required');
       }
 
-      const result = await authService.register({ username, email, password_hash });
+      const { user, tokens } = await authService.register({ username, email, password_hash });
 
-      ResponseUtil.created(res, result, 'User registered successfully');
+      ResponseUtil.created(res, { user, tokens }, 'User registered successfully');
     } catch (err) {
       next(err);
     }
@@ -28,9 +28,9 @@ export class AuthController {
         throw new BadRequestError('Email and password are required');
       }
 
-      const result = await authService.login({ email, password });
+      const { user, tokens } = await authService.login({ email, password });
 
-      ResponseUtil.success(res, result, 'Login successfully');
+      ResponseUtil.success(res, { user, tokens }, 'Login successfully');
     } catch (err) {
       next(err);
     }
@@ -43,6 +43,34 @@ export class AuthController {
       }
 
       ResponseUtil.success(res, req.user, 'User info retrived');
+    } catch (err) {
+      next(err);
+    }
+  }
+
+  async refreshToken(req: Request, res: Response, next: NextFunction): Promise<void> {
+    try {
+      const { refreshToken } = req.body;
+      if (!refreshToken) {
+        throw new BadRequestError('Refresh token is required');
+      }
+      const { accessToken } = await authService.refreshAccessToken(refreshToken);
+
+      ResponseUtil.success(res, { accessToken }, 'Refresh token successfully');
+    } catch (err) {
+      next(err);
+    }
+  }
+
+  async logout(req: Request, res: Response, next: NextFunction): Promise<void> {
+    try {
+      const { refreshToken } = req.body;
+      if (!refreshToken) {
+        throw new BadRequestError('Refresh token is required');
+      }
+      await authService.logout(refreshToken);
+
+      ResponseUtil.noContent(res);
     } catch (err) {
       next(err);
     }

@@ -6,6 +6,8 @@ import { env } from './config/env.js';
 import { pool } from './config/db.js';
 import router from './routes/index.js';
 import { errorHandler, notFoundHandler } from './middlewares/errorHandler.js';
+import { cleanupExpiredTokens } from './utils/tokenCleanup.js';
+import { startTokenCleanupScheduler, startTokenStatsLogger } from './utils/scheduler.js';
 
 const app: Application = express();
 
@@ -53,6 +55,16 @@ async function startServer() {
     // Test db connection
     await pool.query('SELECT NOW()');
     console.log('Database connected');
+
+    // Cleanup  expired  toke s on startup 
+    const deletedOnStartup = await cleanupExpiredTokens();
+    if (deletedOnStartup > 0) {
+      console.log(`Cleaned up ${deletedOnStartup} expired token(s) startup`);
+    }
+
+    // Start automatic cleanup scheduler
+    startTokenCleanupScheduler();
+    startTokenStatsLogger();
 
     // Running Server 
     const PORT = env.server.port;

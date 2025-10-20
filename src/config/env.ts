@@ -12,6 +12,8 @@ interface EnvConfig {
   jwt: {
     secret: string;
     expiresIn: string;
+    refreshSecret: string;
+    refreshExpiresIn: string;
   };
   server: {
     port: number;
@@ -33,12 +35,15 @@ export const env: EnvConfig = {
     port: parseInt(getEnvVar('DB_PORT', '5432')),
     name: getEnvVar('DB_NAME'),
     user: getEnvVar('DB_USER'),
-    password: getEnvVar('DB_PASSWORD', ''),
+    password: getEnvVar('DB_PASSWORD', 'none'),
     uri: getEnvVar('DB_URI'),
   },
   jwt: {
     secret: getEnvVar('JWT_SECRET'),
-    expiresIn: getEnvVar('JWT_EXPIRES_IN', '7d') as string,
+    expiresIn: getEnvVar('JWT_EXPIRES_IN', '15m') as string,
+    refreshSecret: getEnvVar('JWT_REFRESH_SECRET'),
+    refreshExpiresIn: getEnvVar('JWT_REFRESH_EXPIRES_IN', '7d') as string,
+
   },
   server: {
     port: parseInt(getEnvVar('PORT', '3000'), 10),

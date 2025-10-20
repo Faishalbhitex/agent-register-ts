@@ -5,90 +5,422 @@ A production-ready RESTful API for managing AI agent registrations using the [A2
 ## 🌟 Features
 
 - **🤖 A2A Protocol Integration** - Automatic agent card fetching from agent servers
-- **🔐 JWT Authentication** - Secure user registration and login with 7-day token expiry
+- **🔐 Dual-Token JWT Authentication** - Access (15m) + Refresh (7d) tokens with automatic rotation
+- **🛡️ Role-Based Access Control (RBAC)** - Admin and user roles with granular permissions
 - **📊 Agent Registry** - Full CRUD operations for AI agent management
-- **🔍 Public Discovery API** - Enable AI agents to discover available services
-- **🛡️ Security** - Rate limiting, helmet, CORS, and bcrypt password hashing
+- **👤 Ownership-Based Authorization** - Users manage only their agents, admins manage all
+- **🌐 Public Agent Discovery** - Public agents visible to all users
+- **⚡ Token Lifecycle Management** - Automatic expired token cleanup with cron jobs
+- **🔒 Security** - Rate limiting, helmet, CORS, bcryptjs (Termux-compatible)
 - **⚡ Performance** - PostgreSQL connection pooling and optimized queries
 - **🏗️ Clean Architecture** - MVC pattern with TypeScript for maintainability
 
-## 📋 Table of Contents
+## ⚡ Quick Start (5-10 minutes)
 
-- [Prerequisites](#prerequisites)
-- [Installation](#installation)
-- [Database Setup](#database-setup)
-- [Configuration](#configuration)
-- [Running the Application](#running-the-application)
-- [API Endpoints](#api-endpoints)
-- [Testing with A2A Agent](#testing-with-a2a-agent)
-- [Project Structure](#project-structure)
-- [Technologies](#technologies)
-- [Contributing](#contributing)
-- [License](#license)
-
-## 🔧 Prerequisites
+### Prerequisites
 
 - **Node.js** >= 18.x
-- **PostgreSQL** >= 14.x
-- **npm** or **yarn**
+- **PostgreSQL** >= 14.x with `pg_ctl` and `psql` CLI tools
 - **curl** and **jq** (for testing)
 
-## 📦 Installation
+### Three-Terminal Setup
 
-1. **Clone the repository**
+This guide uses 3 terminals for a smooth development experience:
+
+1. **Terminal 1:** PostgreSQL setup & management
+2. **Terminal 2:** Node.js server
+3. **Terminal 3:** Testing with curl + jq
+
+#### Terminal 1: PostgreSQL Setup
 
 ```bash
+# Create PostgreSQL data directory (for Termux or custom setup)
+mkdir -p ~/pg-a2a-card
+cd ~/pg-a2a-card
+
+# Initialize PostgreSQL cluster
+initdb -D ~/pg-a2a-card
+
+# Start PostgreSQL server (keep this terminal open)
+pg_ctl -D ~/pg-a2a-card start
+
+# Verify PostgreSQL is running
+pg_ctl -D ~/pg-a2a-card status
+# Output: pg_ctl: server is running (PID: XXXX)
+
+# In the same terminal, connect to PostgreSQL
+psql -h localhost -U postgres
+
+# Inside psql, create admin user and database
+CREATE USER admin WITH SUPERUSER CREATEDB;
+CREATE DATABASE agentcard_db OWNER admin;
+
+# Stay in psql (don't quit yet - you'll use it for migrations)
+```
+
+#### Terminal 2: Node.js Setup
+
+```bash
+# Clone repository
 git clone https://github.com/Faishalbhitex/agent-register-ts.git
 cd agent-register-ts
-```
 
-2. **Install dependencies**
-
-```bash
+# Install dependencies
 npm install
-```
 
-3. **Copy environment variables**
-
-```bash
+# Copy environment file
 cp .env.example .env
+
+# Edit .env if needed (defaults should work)
+# DB_URI=postgresql://admin@localhost:5432/agentcard_db
+
+# Keep terminal open, will run server here
 ```
 
-## 🗄️ Database Setup
+#### Terminal 1: Database Migrations (psql still open)
 
-1. **Start PostgreSQL**
+```sql
+-- Make sure you're connected to agentcard_db in psql
+-- If not: \c agentcard_db
 
-```bash
-# For Termux (Android)
-pg_ctl -D $HOME/pg-a2a-card start
-
-# For standard installations
-sudo systemctl start postgresql
-```
-
-2. **Create database**
-
-```bash
-createdb -U admin agentcard_db
-```
-
-3. **Run migrations**
-
-```bash
-psql -U admin -d agentcard_db
-
-# Inside psql:
+-- Run migrations
 \i migrations/001_create_users_table.sql
 \i migrations/002_create_agents_table.sql
+\i migrations/003_create_refresh_tokens_table.sql
+\i migrations/004_add_role_to_users.sql
 
-# Verify tables
+-- Verify tables created
 \dt
+-- You should see: agents, refresh_tokens, users tables
+
+-- Stay in psql (keep it open for later steps)
+```
+
+#### Terminal 2: Start Node.js Server
+
+```bash
+npm run dev
+
+# Expected output:
+# Database connected
+# Server running on http://localhost:3000
+# Environment: development
+# API base: http://localhost:3000/api
+# Health: http://localhost:3000/health
+# Token cleanup scheduler started
+```
+
+**Keep Terminal 2 running while testing!**
+
+#### Terminal 3: Create Test Users
+
+```bash
+# Create User 1
+curl -X POST http://localhost:3000/api/auth/register \
+  -H "Content-Type: application/json" \
+  -d '{
+    "username": "user1",
+    "email": "user1@example.com",
+    "password": "password123"
+  }' | jq
+
+# Create User 2
+curl -X POST http://localhost:3000/api/auth/register \
+  -H "Content-Type: application/json" \
+  -d '{
+    "username": "user2",
+    "email": "user2@example.com",
+    "password": "password456"
+  }' | jq
+
+# Create Admin User
+curl -X POST http://localhost:3000/api/auth/register \
+  -H "Content-Type: application/json" \
+  -d '{
+    "username": "admin1",
+    "email": "admin@example.com",
+    "password": "admin123"
+  }' | jq
+```
+
+#### Terminal 1: Update User Roles to Admin
+
+```sql
+-- Back in psql (Terminal 1)
+UPDATE users SET role = 'admin' WHERE email = 'admin@example.com';
+
+-- Verify
+SELECT id, username, email, role FROM users;
+-- Expected output:
+--  id | username |       email        | role
+-- ----+----------+--------------------+-------
+--   1 | user1    | user1@example.com  | user
+--   2 | user2    | user2@example.com  | user
+--   3 | admin1   | admin@example.com  | admin
+```
+
+#### Terminal 3: Get User Tokens
+
+```bash
+# Login User 1 and save token
+USER1_LOGIN=$(curl -s -X POST http://localhost:3000/api/auth/login \
+  -H "Content-Type: application/json" \
+  -d '{"email":"user1@example.com","password":"password123"}')
+
+USER1_TOKEN=$(echo $USER1_LOGIN | jq -r '.data.tokens.accessToken')
+
+# Login User 2 and save token
+USER2_LOGIN=$(curl -s -X POST http://localhost:3000/api/auth/login \
+  -H "Content-Type: application/json" \
+  -d '{"email":"user2@example.com","password":"password456"}')
+
+USER2_TOKEN=$(echo $USER2_LOGIN | jq -r '.data.tokens.accessToken')
+
+# Login Admin and save token
+ADMIN_LOGIN=$(curl -s -X POST http://localhost:3000/api/auth/login \
+  -H "Content-Type: application/json" \
+  -d '{"email":"admin@example.com","password":"admin123"}')
+
+ADMIN_TOKEN=$(echo $ADMIN_LOGIN | jq -r '.data.tokens.accessToken')
+
+# Verify tokens (should return user info)
+curl -s http://localhost:3000/api/auth/me \
+  -H "Authorization: Bearer $USER1_TOKEN" | jq '.data | {id, username, role}'
+```
+
+#### Terminal 1: Create Dummy Agents
+
+```sql
+-- Back in psql (Terminal 1)
+-- Insert agents for User 1
+INSERT INTO agents (name, description, url, user_id) VALUES
+('Weather Service', 'Get weather information', 'http://localhost:4000/', 1),
+('Calculator Service', 'Perform calculations', 'http://localhost:4001/', 1);
+
+-- Insert agents for User 2
+INSERT INTO agents (name, description, url, user_id) VALUES
+('News Aggregator', 'Fetch latest news', 'http://localhost:4002/', 2),
+('Translation Service', 'Translate text', 'http://localhost:4003/', 2);
+
+-- Insert public agents (user_id IS NULL)
+INSERT INTO agents (name, description, url, user_id) VALUES
+('Public API Gateway', 'General purpose API', 'http://localhost:5000/', NULL),
+('Health Monitor', 'System health check', 'http://localhost:5001/', NULL);
+
+-- Verify
+SELECT id, name, user_id FROM agents ORDER BY id;
+-- Expected: 6 agents (2 for user1, 2 for user2, 2 public)
+```
+
+#### Terminal 3: Test Agent Endpoints
+
+**Test 1: Public agents (no auth)**
+
+```bash
+# Anyone can see public agents
+curl -s http://localhost:3000/api/agents | jq '.data | map({id, name, user_id})'
+# Output: 2 public agents
+```
+
+**Test 2: User 1 - sees own + public agents**
+
+```bash
+curl -s http://localhost:3000/api/agents \
+  -H "Authorization: Bearer $USER1_TOKEN" | jq '.data | map({id, name, user_id})'
+# Output: 2 public + 2 user1 agents = 4 total
+```
+
+**Test 3: User 2 - sees own + public agents**
+
+```bash
+curl -s http://localhost:3000/api/agents \
+  -H "Authorization: Bearer $USER2_TOKEN" | jq '.data | map({id, name, user_id})'
+# Output: 2 public + 2 user2 agents = 4 total
+```
+
+**Test 4: Admin - sees ALL agents**
+
+```bash
+curl -s http://localhost:3000/api/agents \
+  -H "Authorization: Bearer $ADMIN_TOKEN" | jq '.data | map({id, name, user_id})'
+# Output: 6 agents (all)
+```
+
+**Test 5: User 1 cannot modify User 2's agent**
+
+```bash
+curl -s -X PUT http://localhost:3000/api/agents/3 \
+  -H "Authorization: Bearer $USER1_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{"description":"hacked"}' | jq '.error'
+# Output: "You can only manage your own agents"
+```
+
+**Test 6: User 1 can modify their own agent**
+
+```bash
+curl -s -X PUT http://localhost:3000/api/agents/1 \
+  -H "Authorization: Bearer $USER1_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{"description":"Updated by User 1"}' | jq '.data.description'
+# Output: "Updated by User 1"
+```
+
+**Test 7: Admin can modify ANY agent**
+
+```bash
+curl -s -X PUT http://localhost:3000/api/agents/3 \
+  -H "Authorization: Bearer $ADMIN_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{"description":"Updated by Admin"}' | jq '.data.description'
+# Output: "Updated by Admin"
+```
+
+**Test 8: Test token refresh**
+
+```bash
+# Get refresh token from login response
+REFRESH_TOKEN=$(echo $USER1_LOGIN | jq -r '.data.tokens.refreshToken')
+
+# Use refresh token to get new access token
+curl -s -X POST http://localhost:3000/api/auth/refresh \
+  -H "Content-Type: application/json" \
+  -d "{\"refreshToken\":\"$REFRESH_TOKEN\"}" | jq '.data | {accessToken, refreshToken}'
+```
+
+### Cleanup: Delete Test Data
+
+When you're done testing:
+
+#### Terminal 1: Reset Database
+
+```sql
+-- Delete all agents first (due to foreign key)
+DELETE FROM agents;
+
+-- Reset sequence
+ALTER SEQUENCE agents_id_seq RESTART WITH 1;
+
+-- Delete all refresh tokens
+DELETE FROM refresh_tokens;
+
+-- Delete all users
+DELETE FROM users;
+
+-- Reset sequences
+ALTER SEQUENCE users_id_seq RESTART WITH 1;
+
+-- Verify
+SELECT COUNT(*) FROM users;
+SELECT COUNT(*) FROM agents;
+SELECT COUNT(*) FROM refresh_tokens;
+-- All should return 0
+
+-- Exit psql
 \q
 ```
 
-## ⚙️ Configuration
+#### Stop PostgreSQL (Terminal 1)
 
-Edit `.env` file with your configuration:
+```bash
+# Stop the PostgreSQL server
+pg_ctl -D ~/pg-a2a-card stop
+
+# Verify it stopped
+pg_ctl -D ~/pg-a2a-card status
+# Output: pg_ctl: no server running
+```
+
+#### Stop Node.js Server (Terminal 2)
+
+```bash
+# Press Ctrl+C to stop the server
+Ctrl+C
+```
+
+---
+
+## 📚 Full Documentation
+
+### Project Structure
+
+```
+agent-register-ts/
+├── migrations/              # Database migration files
+│   ├── 001_create_users_table.sql
+│   ├── 002_create_agents_table.sql
+│   ├── 003_create_refresh_tokens_table.sql
+│   └── 004_add_role_to_users.sql
+├── src/
+│   ├── config/             # Configuration
+│   ├── controllers/        # Request handlers
+│   ├── middlewares/        # Express middlewares
+│   │   ├── auth.middleware.ts
+│   │   ├── authorization.middleware.ts (RBAC)
+│   │   └── optionalAuth.middleware.ts
+│   ├── models/             # TypeScript interfaces
+│   ├── repositories/       # Database operations
+│   ├── routes/             # API routes
+│   ├── services/           # Business logic
+│   ├── types/              # Type definitions
+│   ├── utils/              # Utilities
+│   │   ├── scheduler.ts    # Cron jobs
+│   │   └── tokenCleanup.ts # Token cleanup
+│   └── index.ts            # Entry point
+├── .env.example
+├── package.json
+└── README.md
+```
+
+### API Endpoints Reference
+
+**Authentication:**
+
+| Endpoint | Method | Auth | Description |
+|----------|--------|------|-------------|
+| `/api/auth/register` | POST | ❌ | Register new user (role: user) |
+| `/api/auth/login` | POST | ❌ | Login, get access + refresh tokens |
+| `/api/auth/refresh` | POST | ❌ | Refresh access token |
+| `/api/auth/me` | GET | ✅ | Get current user info |
+
+**Agents:**
+
+| Endpoint | Method | Auth | Description |
+|----------|--------|------|-------------|
+| `/api/agents` | GET | ⚡ | List agents (public/user/admin view) |
+| `/api/agents/:id` | GET | ❌ | Get agent by ID |
+| `/api/agents` | POST | ✅ | Create agent (user becomes owner) |
+| `/api/agents/:id` | PUT | ✅ | Update agent (owner or admin) |
+| `/api/agents/:id` | DELETE | ✅ | Delete agent (owner or admin) |
+
+**Legend:** ✅ Required | ❌ Not required | ⚡ Optional
+
+### Role-Based Access Control
+
+| Role | List All | Create | Update Own | Update Other | Delete Own | Delete Other |
+|------|----------|--------|-----------|--------------|-----------|--------------|
+| **user** | ❌ | ✅ | ✅ | ❌ | ✅ | ❌ |
+| **admin** | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
+
+### Authentication Tokens
+
+**Access Token:**
+- Expires: 15 minutes (configurable via `JWT_EXPIRES_IN`)
+- Used for: API requests
+- Payload: `{ id, username, email, role }`
+
+**Refresh Token:**
+- Expires: 7 days (configurable via `JWT_REFRESH_EXPIRES_IN`)
+- Used for: Getting new access token
+- Storage: Database (for tracking and cleanup)
+
+**Automatic Cleanup:**
+- Expired refresh tokens are automatically deleted every 6 hours
+- No manual intervention needed
+
+### Configuration
+
+Edit `.env` file:
 
 ```env
 # Database
@@ -96,135 +428,81 @@ DB_HOST=localhost
 DB_PORT=5432
 DB_NAME=agentcard_db
 DB_USER=admin
-DB_PASSWORD=your_password
-DB_URI=postgresql://admin:your_password@localhost:5432/agentcard_db
+DB_PASSWORD=
+DB_URI=postgresql://admin@localhost:5432/agentcard_db
 
-# JWT
-JWT_SECRET=your-super-secret-jwt-key-minimum-32-characters
-JWT_EXPIRES_IN=7d
+# JWT (Access Token)
+JWT_SECRET=jwt-super-secret-key-minimum-32-characters
+JWT_EXPIRES_IN=15m
+
+# JWT (Refresh Token)
+JWT_REFRESH_SECRET=jwt-super-secret-refresh-key-different-from-access
+JWT_REFRESH_EXPIRES_IN=7d
 
 # Server
 PORT=3000
 NODE_ENV=development
 ```
 
-## 🚀 Running the Application
+### Security Features
 
-**Development mode:**
+✅ Dual-token JWT system (access + refresh)
+✅ Role-Based Access Control (RBAC)
+✅ Ownership-based authorization
+✅ Automatic token cleanup
+✅ Password hashing (bcryptjs - Termux compatible)
+✅ Rate limiting (100 req/15min per IP)
+✅ Helmet security headers
+✅ CORS protection
+✅ SQL injection protection (parameterized queries)
+✅ Input validation
 
-```bash
-npm run dev
-```
+### Known Limitations
 
-**Expected output:**
+> ⚠️ **Token Blacklist/Denial:** Currently, the API relies on token expiration (15m for access tokens) for logout. Token blacklist functionality is planned for future versions. If immediate logout is required, users should discard their tokens and wait for expiration.
 
-```
-Database connected
-Server running on http://localhost:3000
-Environment: development
-API base: http://localhost:3000/api
-Health: http://localhost:3000/health
-```
+### Database Schema
 
-## 📡 API Endpoints
+**Users Table:**
+- `id` - Primary key
+- `username` - Unique username
+- `email` - Unique email
+- `password_hash` - Hashed password
+- `role` - 'user' or 'admin'
+- `created_at`, `updated_at`
 
-### Health Check
+**Agents Table:**
+- `id` - Primary key
+- `name` - Unique agent name
+- `description` - Agent description
+- `url` - Agent server URL
+- `user_id` - Owner ID (NULL = public agent)
+- `created_at`, `updated_at`
 
-```bash
-GET /health
-```
+**Refresh Tokens Table:**
+- `id` - Primary key
+- `user_id` - Token owner
+- `token` - JWT token string
+- `expires_at` - Expiration timestamp
+- `created_at`
 
-### Authentication
+### Testing with A2A Agents
 
-| Endpoint | Method | Auth Required | Description |
-|----------|--------|---------------|-------------|
-| `/api/auth/register` | POST | ❌ | Register new user |
-| `/api/auth/login` | POST | ❌ | Login user |
-| `/api/auth/me` | GET | ✅ | Get current user info |
-
-### Agents
-
-| Endpoint | Method | Auth Required | Description |
-|----------|--------|---------------|-------------|
-| `/api/agents` | GET | ❌ | List all agents (Public Discovery) |
-| `/api/agents/:id` | GET | ❌ | Get agent by ID |
-| `/api/agents` | POST | ✅ | Register new agent |
-| `/api/agents/:id` | PUT | ✅ | Update agent |
-| `/api/agents/:id` | DELETE | ✅ | Delete agent |
-
-### Example Requests
-
-**Register User:**
+To test with a real A2A agent server:
 
 ```bash
-curl -X POST http://localhost:3000/api/auth/register \
-  -H "Content-Type: application/json" \
-  -d '{
-    "username": "john_doe",
-    "email": "john@example.com",
-    "password_hash": "secure_password123"
-  }'
-```
-
-**Login:**
-
-```bash
-curl -X POST http://localhost:3000/api/auth/login \
-  -H "Content-Type: application/json" \
-  -d '{
-    "email": "john@example.com",
-    "password": "secure_password123"
-  }'
-```
-
-**Register Agent (with A2A):**
-
-```bash
-TOKEN="your_jwt_token"
-
-curl -X POST http://localhost:3000/api/agents \
-  -H "Authorization: Bearer $TOKEN" \
-  -H "Content-Type: application/json" \
-  -d '{
-    "url": "http://localhost:4000/"
-  }'
-```
-
-**Get All Agents:**
-
-```bash
-curl http://localhost:3000/api/agents
-```
-
-## 🧪 Testing with A2A Agent
-
-To test agent registration with a real A2A agent server:
-
-1. **Clone the weather agent repository:**
-
-```bash
+# 1. Clone and setup A2A agent
 git clone https://github.com/Faishalbhitex/ts-a2a-mcp.git
 cd ts-a2a-mcp
-```
-
-2. **Follow the setup in that repository's README**
-
-3. **Run the weather agent:**
-
-```bash
 npm install
-npm run mcp:weather  # Terminal 1
-npm run a2a:weather-agent  # Terminal 2
-```
 
-4. **Copy the agent server URL** (e.g., `http://localhost:4000/`)
+# 2. Run agent (check README for specific commands)
+npm run a2a:weather-agent  # Example
 
-5. **Register the agent:**
-
-```bash
+# 3. Register in your registry
 TOKEN=$(curl -s -X POST http://localhost:3000/api/auth/login \
   -H "Content-Type: application/json" \
-  -d '{"email":"your@email.com","password":"yourpassword"}' | jq -r '.data.token')
+  -d '{"email":"user1@example.com","password":"password123"}' | jq -r '.data.tokens.accessToken')
 
 curl -X POST http://localhost:3000/api/agents \
   -H "Authorization: Bearer $TOKEN" \
@@ -232,164 +510,50 @@ curl -X POST http://localhost:3000/api/agents \
   -d '{"url":"http://localhost:4000/"}'
 ```
 
-The API will automatically fetch the agent card from `http://localhost:4000/.well-known/agent-card.json` and register it.
+### Technologies Used
 
-## 📁 Project Structure
+- **Node.js** 18+ with **TypeScript** 5.x
+- **Express** 5.x for REST API
+- **PostgreSQL** 17.x for data storage
+- **JWT** for authentication
+- **bcryptjs** for password hashing
+- **node-cron** for scheduled tasks
+- **Helmet**, **CORS**, **Rate Limit** for security
+- **@a2a-js/sdk** for A2A Protocol support
 
-```
-agent-register-ts/
-├── migrations/              # Database migration files
-│   ├── 001_create_users_table.sql
-│   └── 002_create_agents_table.sql
-├── src/
-│   ├── config/             # Configuration files
-│   │   ├── db.ts           # Database connection
-│   │   └── env.ts          # Environment variables
-│   ├── controllers/        # Request handlers
-│   │   ├── agent.controller.ts
-│   │   └── auth.controller.ts
-│   ├── middlewares/        # Express middlewares
-│   │   ├── auth.middleware.ts
-│   │   └── errorHandler.ts
-│   ├── models/             # TypeScript interfaces
-│   │   ├── agent.model.ts
-│   │   └── user.model.ts
-│   ├── repositories/       # Database operations
-│   │   ├── agent.repository.ts
-│   │   └── user.repository.ts
-│   ├── routes/             # API routes
-│   │   ├── agent.routes.ts
-│   │   ├── auth.routes.ts
-│   │   └── index.ts
-│   ├── services/           # Business logic
-│   │   ├── a2a.service.ts
-│   │   ├── agent.service.ts
-│   │   └── auth.service.ts
-│   ├── types/              # TypeScript type definitions
-│   │   └── express.d.ts
-│   ├── utils/              # Utility functions
-│   │   ├── errors.ts
-│   │   └── response.ts
-│   └── index.ts            # Application entry point
-├── .env.example            # Environment variables template
-├── .gitignore
-├── package.json
-├── tsconfig.json
-└── README.md
-```
+### Troubleshooting
 
-## 🛠️ Technologies
+**"Database connection refused"**
+- Make sure PostgreSQL is running: `pg_ctl -D ~/pg-a2a-card status`
+- Verify `DB_URI` in `.env` is correct
 
-- **Runtime:** Node.js 18+
-- **Language:** TypeScript 5.x
-- **Framework:** Express 5.x
-- **Database:** PostgreSQL 17.x
-- **Authentication:** JWT + bcryptjs
-- **Security:** Helmet, CORS, express-rate-limit
-- **A2A SDK:** @a2a-js/sdk
-- **Dev Tools:** tsx (TypeScript executor)
+**"Migration file not found"**
+- Make sure you're in the project root directory
+- Check migrations folder exists: `ls migrations/`
 
-## 🔒 Security Features
+**"Port 3000 already in use"**
+- Change `PORT` in `.env`
+- Or kill the process: `lsof -i :3000`
 
-- ✅ **Password Hashing** - bcrypt with salt rounds
-- ✅ **JWT Tokens** - Secure authentication with expiry
-- ✅ **Rate Limiting** - 100 requests per 15 minutes per IP
-- ✅ **Helmet** - Security headers
-- ✅ **CORS** - Cross-origin resource sharing
-- ✅ **Input Validation** - Request body validation
-- ✅ **SQL Injection Protection** - Parameterized queries
-- ✅ **Error Handling** - No sensitive data in error responses
+**"Token expired error"**
+- This is expected after 15 minutes
+- Use refresh token endpoint to get new access token
+- Or login again
 
-## 📊 Database Schema
-
-### Users Table
-
-```sql
-- id (SERIAL PRIMARY KEY)
-- username (VARCHAR(50) UNIQUE NOT NULL)
-- email (VARCHAR(255) UNIQUE NOT NULL)
-- password_hash (VARCHAR(255) NOT NULL)
-- created_at (TIMESTAMP DEFAULT CURRENT_TIMESTAMP)
-- updated_at (TIMESTAMP DEFAULT CURRENT_TIMESTAMP)
-```
-
-### Agents Table
-
-```sql
-- id (SERIAL PRIMARY KEY)
-- name (VARCHAR(255) UNIQUE NOT NULL)
-- description (TEXT)
-- url (VARCHAR(500) UNIQUE NOT NULL)
-- user_id (INTEGER REFERENCES users(id))
-- created_at (TIMESTAMP DEFAULT CURRENT_TIMESTAMP)
-- updated_at (TIMESTAMP DEFAULT CURRENT_TIMESTAMP)
-```
-
-## 🧪 Testing
-
-**Test health endpoint:**
-
-```bash
-curl http://localhost:3000/health | jq
-```
-
-**Test rate limiting:**
-
-```bash
-for i in {1..105}; do
-  curl -s -o /dev/null -w "Request $i: %{http_code}\n" http://localhost:3000/health
-  sleep 0.05
-done
-```
-
-**Test authentication flow:**
-
-```bash
-# Register
-curl -X POST http://localhost:3000/api/auth/register \
-  -H "Content-Type: application/json" \
-  -d '{"username":"test","email":"test@test.com","password_hash":"test123"}'
-
-# Login & save token
-TOKEN=$(curl -s -X POST http://localhost:3000/api/auth/login \
-  -H "Content-Type: application/json" \
-  -d '{"email":"test@test.com","password":"test123"}' | jq -r '.data.token')
-
-# Get user info
-curl http://localhost:3000/api/auth/me \
-  -H "Authorization: Bearer $TOKEN" | jq
-```
-
-## 🤝 Contributing
-
-Contributions are welcome! Please feel free to submit a Pull Request.
-
-1. Fork the repository
-2. Create your feature branch (`git checkout -b feature/amazing-feature`)
-3. Commit your changes (`git commit -m 'Add some amazing feature'`)
-4. Push to the branch (`git push origin feature/amazing-feature`)
-5. Open a Pull Request
+---
 
 ## 📝 License
 
-This project is licensed under the ISC License.
+ISC License
 
 ## 👤 Author
 
-**Faishal**
-
-- GitHub: [@Faishalbhitex](https://github.com/Faishalbhitex)
+**Faishal** - [@Faishalbhitex](https://github.com/Faishalbhitex)
 
 ## 🙏 Acknowledgments
 
-- [A2A Protocol](https://a2a-protocol.org/latest/) - Agent-to-Agent communication standard
-- [@a2a-js/sdk](https://github.com/a2aproject/a2a-js) - JavaScript SDK for A2A Protocol
-
-## 📚 Resources
-
-- [A2A Protocol Documentation](https://a2a-protocol.org/latest/)
-- [A2A JavaScript SDK](https://github.com/a2aproject/a2a-js)
-- [Example Weather Agent](https://github.com/Faishalbhitex/ts-a2a-mcp)
+- [A2A Protocol](https://a2a-protocol.org/latest/)
+- [@a2a-js/sdk](https://github.com/a2aproject/a2a-js)
 
 ---
 

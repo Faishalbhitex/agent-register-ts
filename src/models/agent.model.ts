@@ -26,6 +26,7 @@ export interface AgentResponse {
   name: string;
   description: string | null;
   url: string;
+  user_id: number | null;
   created_at: Date;
   updated_at: Date;
 }

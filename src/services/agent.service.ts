@@ -1,6 +1,6 @@
 import { agentRepository } from "../repositories/agent.repository.js";
 import { a2aService } from "./a2a.service.js";
-import { CreateAgentDTO, UpdateAgentDTO, AgentResponse } from "../models/agent.model.js";
+import { CreateAgentDTO, UpdateAgentDTO, AgentResponse, Agent } from "../models/agent.model.js";
 import { NotFoundError, ConflictError } from "../utils/errors.js";
 
 export class AgentService {
@@ -25,18 +25,29 @@ export class AgentService {
       name: agent.name,
       description: agent.description,
       url: agent.url,
+      user_id: agent.user_id,
       created_at: agent.created_at,
       updated_at: agent.updated_at,
     }
   }
 
-  async findAll(): Promise<AgentResponse[]> {
-    const agents = await agentRepository.findAll();
+  async findAll(userId?: number, isAdmin?: boolean): Promise<AgentResponse[]> {
+    let agents: Agent[] = [];
+
+    if (isAdmin) {
+      agents = await agentRepository.findAll();
+    } else if (userId) {
+      agents = await agentRepository.findAllByUser(userId);
+    } else {
+      agents = await agentRepository.findAllPublic();
+    }
+
     return agents.map(agent => ({
       id: agent.id,
       name: agent.name,
       description: agent.description,
       url: agent.url,
+      user_id: agent.user_id,
       created_at: agent.created_at,
       updated_at: agent.updated_at,
     }));
@@ -53,6 +64,7 @@ export class AgentService {
       name: agent.name,
       description: agent.description,
       url: agent.url,
+      user_id: agent.user_id,
       created_at: agent.created_at,
       updated_at: agent.updated_at,
     }
@@ -69,6 +81,7 @@ export class AgentService {
       name: agent.name,
       description: agent.description,
       url: agent.url,
+      user_id: agent.user_id,
       created_at: agent.created_at,
       updated_at: agent.updated_at,
     }

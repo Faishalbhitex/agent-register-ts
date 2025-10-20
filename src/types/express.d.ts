@@ -1,4 +1,4 @@
-import { User } from '../models/user.model.js';
+import { User, Role } from '../models/user.model.js';
 
 declare global {
   namespace Express {
@@ -7,6 +7,7 @@ declare global {
         id: number;
         username: string;
         email: string;
+        role: Role;
       }
     }
   }

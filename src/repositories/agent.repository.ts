@@ -25,6 +25,26 @@ export class AgentRepository {
     return result.rows;
   }
 
+  async findAllByUser(userId: number): Promise<Agent[]> {
+    const query = `
+      SELECT * FROM agents
+      WHERE user_id = $1 or user_id IS NULL 
+      ORDER BY created_at DESC
+    `;
+    const result: QueryResult<Agent> = await pool.query(query, [userId]);
+    return result.rows;
+  }
+
+  async findAllPublic(): Promise<Agent[]> {
+    const query = `
+      SELECT * FROM agents
+      WHERE user_id IS NULL
+      ORDER BY created_at DESC
+    `;
+    const result: QueryResult<Agent> = await pool.query(query);
+    return result.rows;
+  }
+
   async findById(id: number): Promise<Agent | null> {
     const query = `SELECT * FROM agents WHERE id = $1`;
     const result: QueryResult<Agent> = await pool.query(query, [id]);
