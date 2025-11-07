@@ -9,6 +9,9 @@ interface EnvConfig {
     password: string;
     uri: string;
   };
+  redis: {
+    url: string;
+  },
   jwt: {
     secret: string;
     expiresIn: string;
@@ -37,6 +40,9 @@ export const env: EnvConfig = {
     user: getEnvVar('DB_USER'),
     password: getEnvVar('DB_PASSWORD', 'none'),
     uri: getEnvVar('DB_URI'),
+  },
+  redis: {
+    url: getEnvVar('REDIS_URL'),
   },
   jwt: {
     secret: getEnvVar('JWT_SECRET'),

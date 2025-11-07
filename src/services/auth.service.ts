@@ -7,6 +7,7 @@ import { CreateUserDTO, LoginDTO, UserResponse, Role } from "../models/user.mode
 import { ConflictError, UnauthorizedError } from "../utils/errors.js";
 import { limitUserTokens } from "../utils/tokenCleanup.js";
 import ms from 'ms';
+import redisClient from "../config/redis.js";
 
 interface AuthTokens {
   accessToken: string;
@@ -105,13 +106,59 @@ export class AuthService {
     }
   }
 
-  async logout(refreshToken: string): Promise<void> {
-    const deleted = await tokenRepository.deleteByToken(refreshToken);
-    if (!deleted) {
-      console.warn(`Attempted to log out with a non-existent refresh token.`);
+  async logout(refreshToken: string, accessToken?: string): Promise<void> {
+    try {
+      const deleted = await tokenRepository.deleteByToken(refreshToken);
+      if (!deleted) {
+        console.warn(`Logout: refresh token not found from DB.`);
+      } else {
+        console.log('Logout: refresh token removed from DB');
+      }
+    } catch (err) {
+      console.error(`Logout: error deleting refresh token:`, err);
+    }
+
+    if (accessToken) {
+      try {
+        const decoded = jwt.decode(accessToken) as jwt.JwtPayload | null;
+
+        let ttlSeconds = 60;
+
+        if (decoded && typeof decoded.exp === 'number') {
+          const ttlMs = decoded.exp * 1000 - Date.now();
+
+          if (ttlMs > 0) {
+            ttlSeconds = Math.floor(ttlMs / 1000);
+          } else {
+            // token already expired: nothing to fo 
+            console.warn(`Logout: access token already expired, skipping blacklist.`);
+            return;
+          }
+        } else {
+          console.warn(`Logout: could not decode exp from access token: using fallback TTL 60s.`);
+        }
+
+        // Set blacklist keys with TTL 
+        const key = `bl_${accessToken}`;
+        await redisClient.setEx(key, ttlSeconds, "blacklisted");
+        console.log(`Logout: blacklist access token key=${key} ttl=${ttlSeconds}s`);
+      } catch (err) {
+        console.error(`Logout: failed to blacklist token:`, err);
+      }
+    } else {
+      console.log(`Logout: no accessToken provided in request body; only refresh token hamdled.`);
     }
   }
 
+  async isBlackListed(token: string): Promise<boolean> {
+    try {
+      const result = await redisClient.get(`bl_${token}`)
+      return result === "blacklisted";
+    } catch (err) {
+      console.error(`Redis isBlackListed error:`, err);
+      return false;
+    }
+  }
   verifyToken(token: string): { id: number; email: string; role: Role } {
     try {
       const decoded = jwt.verify(token, env.jwt.secret) as { id: number; email: string; role: Role };

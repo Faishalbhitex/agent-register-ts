@@ -64,11 +64,11 @@ export class AuthController {
 
   async logout(req: Request, res: Response, next: NextFunction): Promise<void> {
     try {
-      const { refreshToken } = req.body;
+      const { refreshToken, accessToken } = req.body;
       if (!refreshToken) {
         throw new BadRequestError('Refresh token is required');
       }
-      await authService.logout(refreshToken);
+      await authService.logout(refreshToken, accessToken);
 
       ResponseUtil.noContent(res);
     } catch (err) {

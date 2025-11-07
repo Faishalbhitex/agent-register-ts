@@ -17,8 +17,15 @@ export const authMiddleware = async (
 
     const token = authHeader.substring(7); // Remove 'Bearer ' prefix
 
-    const decoded = authService.verifyToken(token);
+    const isBlackListed = await authService.isBlackListed(token);
+    if (isBlackListed) {
+      throw new UnauthorizedError("Token has been revoked. Please log in again.");
+    }
 
+    const decoded = authService.verifyToken(token) as unknown as { id: number; type?: string };
+    if (!decoded || decoded.type !== 'access') {
+      throw new UnauthorizedError(`Invalid token type`);
+    }
     const user = await userRepository.findById(decoded.id);
     if (!user) {
       throw new UnauthorizedError('User not found');
